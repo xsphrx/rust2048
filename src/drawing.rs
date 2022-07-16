@@ -9,6 +9,7 @@ pub enum Direction {
 
 pub fn draw_shape(
     ctx: &mut tui::widgets::canvas::Context,
+    color: Color,
     directions: &[Direction],
     x: f64,
     y: f64,
@@ -26,28 +27,55 @@ pub fn draw_shape(
             y1: y,
             x2,
             y2,
-            color: Color::White,
+            color,
         });
         (x, y) = (x2, y2);
     }
 }
 
+pub fn get_bg_color_for_n(n: u32) -> Color {
+    match n {
+        2 => Color::Rgb(238, 228, 218),
+        4 => Color::Rgb(237, 224, 200),
+        8 => Color::Rgb(242, 177, 121),
+        16 => Color::Rgb(245, 149, 99),
+        32 => Color::Rgb(246, 124, 95),
+        64 => Color::Rgb(246, 94, 59),
+        128 => Color::Rgb(237, 207, 114),
+        256 => Color::Rgb(237, 204, 97),
+        512 => Color::Rgb(237, 200, 80),
+        1024 => Color::Rgb(237, 197, 63),
+        2048 => Color::Rgb(237, 194, 46),
+        _ => Color::Gray,
+    }
+}
+
+pub fn get_color_for_n(n: u32) -> Color {
+    match n {
+        n if n > 4 => Color::White,
+        _ => Color::Black,
+    }
+}
+
 pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
+    let color = get_color_for_n(n);
     match n {
         2 => draw_shape(
             ctx,
+            color,
             &[
-                Direction::Right(6.0),
-                Direction::Down(4.0),
-                Direction::Left(6.0),
-                Direction::Down(4.0),
-                Direction::Right(6.0),
+                Direction::Right(4.0),
+                Direction::Down(3.0),
+                Direction::Left(4.0),
+                Direction::Down(3.0),
+                Direction::Right(4.0),
             ],
-            1.0,
-            9.0,
+            3.0,
+            8.0,
         ),
         4 => draw_shape(
             ctx,
+            color,
             &[
                 Direction::Down(3.0),
                 Direction::Right(4.0),
@@ -59,36 +87,39 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
         ),
         8 => draw_shape(
             ctx,
+            color,
             &[
-                Direction::Right(6.0),
-                Direction::Down(4.0),
-                Direction::Left(6.0),
-                Direction::Up(4.0),
-                Direction::Down(8.0),
-                Direction::Right(6.0),
-                Direction::Up(4.0),
+                Direction::Right(4.0),
+                Direction::Down(3.0),
+                Direction::Left(4.0),
+                Direction::Up(3.0),
+                Direction::Down(6.0),
+                Direction::Right(4.0),
+                Direction::Up(3.0),
             ],
-            1.0,
-            9.0,
+            3.0,
+            8.0,
         ),
         16 => {
-            draw_shape(ctx, &[Direction::Down(8.0)], 2.0, 9.0);
+            draw_shape(ctx, color, &[Direction::Down(6.0)], 3.0, 8.0);
             draw_shape(
                 ctx,
+                color,
                 &[
-                    Direction::Left(4.0),
-                    Direction::Down(8.0),
-                    Direction::Right(4.0),
-                    Direction::Up(4.0),
-                    Direction::Left(4.0),
+                    Direction::Left(3.0),
+                    Direction::Down(6.0),
+                    Direction::Right(3.0),
+                    Direction::Up(3.0),
+                    Direction::Left(3.0),
                 ],
                 8.0,
-                9.0,
+                8.0,
             )
         }
         32 => {
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.5),
                     Direction::Down(3.0),
@@ -102,6 +133,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.5),
                     Direction::Down(3.0),
@@ -116,6 +148,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
         64 => {
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.5),
                     Direction::Left(2.5),
@@ -130,6 +163,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Down(3.0),
                     Direction::Right(2.5),
@@ -141,9 +175,10 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             )
         }
         128 => {
-            draw_shape(ctx, &[Direction::Down(6.0)], 1.5, 8.0);
+            draw_shape(ctx, color, &[Direction::Down(6.0)], 1.5, 8.0);
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.5),
                     Direction::Down(3.0),
@@ -156,6 +191,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.5),
                     Direction::Down(3.0),
@@ -172,6 +208,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
         256 => {
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.0),
                     Direction::Down(3.0),
@@ -184,6 +221,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.0),
                     Direction::Left(2.0),
@@ -197,6 +235,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.0),
                     Direction::Left(2.0),
@@ -212,6 +251,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
         512 => {
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.0),
                     Direction::Left(2.0),
@@ -223,9 +263,10 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
                 1.0,
                 8.0,
             );
-            draw_shape(ctx, &[Direction::Down(6.0)], 5.5, 8.0);
+            draw_shape(ctx, color, &[Direction::Down(6.0)], 5.5, 8.0);
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(2.0),
                     Direction::Down(3.0),
@@ -238,9 +279,10 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             )
         }
         1024 => {
-            draw_shape(ctx, &[Direction::Down(6.0)], 1.0, 8.0);
+            draw_shape(ctx, color, &[Direction::Down(6.0)], 1.0, 8.0);
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Down(6.0),
                     Direction::Right(1.8),
@@ -252,6 +294,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(1.8),
                     Direction::Down(3.0),
@@ -264,6 +307,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Down(3.0),
                     Direction::Right(1.8),
@@ -277,6 +321,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
         2048 => {
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(1.5),
                     Direction::Down(3.0),
@@ -289,6 +334,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Down(6.0),
                     Direction::Right(1.5),
@@ -300,6 +346,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Down(3.0),
                     Direction::Right(1.5),
@@ -311,6 +358,7 @@ pub fn draw_number(ctx: &mut tui::widgets::canvas::Context, n: u32) {
             );
             draw_shape(
                 ctx,
+                color,
                 &[
                     Direction::Right(1.5),
                     Direction::Down(3.0),

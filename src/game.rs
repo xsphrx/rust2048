@@ -5,6 +5,7 @@ use crossterm::{
 };
 use itertools::Itertools;
 use rand::seq::SliceRandom;
+use rand::Rng;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
@@ -97,26 +98,49 @@ pub enum Flip {
 }
 
 impl Grid {
-    pub fn new(tile_size: u16, coordinates: Coordinates, size: u16) -> Self {
+    pub fn new(tile_size: u16, size: u16) -> Self {
         let tile_width = tile_size;
         let tile_height = tile_size / 2;
 
-        Self {
+        let mut new_grid = Self {
             tiles: HashMap::new(),
             moving_tiles: vec![],
             size,
             tile_width,
             tile_height,
-            coordinates,
+            coordinates: Coordinates::new(0, 0),
+        };
+        new_grid.insert_tile(Position::new(1, 1), 2);
+        new_grid
+    }
+
+    pub fn mv(&mut self, new_coordinates: Coordinates) {
+        self.coordinates = new_coordinates
+    }
+
+    pub fn change_tile_size(&mut self, new_size: u16) {
+        if new_size == self.tile_width {
+            return;
+        }
+        self.tile_width = new_size;
+        self.tile_height = new_size / 2;
+        for (pos, tile) in self.tiles.clone().iter() {
+            self.tiles
+                .insert(*pos, Tile::new(self.get_coordinates_at(*pos), tile.n));
         }
     }
 
     pub fn width(&self) -> u16 {
-        2 + self.tile_width * 4 + MARGINX * 4
+        2 + self.tile_width * self.size + MARGINX * self.size
     }
 
     pub fn height(&self) -> u16 {
         self.width() / 2
+    }
+
+    pub fn simulate_size(&self, tile_size: u16) -> (u16, u16) {
+        let width = 2 + tile_size * self.size + MARGINX * self.size;
+        (width + self.coordinates.x, width / 2 + self.coordinates.y)
     }
 
     pub fn get_tile_mut(&mut self, pos: Position) -> Option<&mut Tile> {
@@ -141,6 +165,7 @@ impl Grid {
             y: self.coordinates.y + MARGINY + pos.y * MARGINY + pos.y * self.tile_height,
         }
     }
+
     pub fn insert_tile(&mut self, pos: Position, n: u32) {
         self.tiles
             .insert(pos, Tile::new(self.get_coordinates_at(pos), n));
@@ -173,7 +198,12 @@ impl Grid {
         }
 
         if let Some((x, y)) = available.choose(&mut rand::thread_rng()) {
-            self.insert_tile(Position::new(*x, *y), 2);
+            let mut rng = rand::thread_rng();
+            let new_n = match rng.gen_range(0..=10) {
+                x if x < 9 => 2,
+                _ => 4,
+            };
+            self.insert_tile(Position::new(*x, *y), new_n);
             return Ok(());
         }
 
@@ -294,7 +324,7 @@ impl Grid {
         new_grid.moving_tiles
     }
 
-    pub fn on_tick(&mut self, mv: Option<Move>, _animating: &mut bool) {
+    pub fn on_tick(&mut self, mv: Option<Move>) {
         if self.moving_tiles.len() > 0 {
             for (pos, new_pos) in self.moving_tiles.clone().iter() {
                 let desired = self.get_coordinates_at(*new_pos);
@@ -328,23 +358,20 @@ impl Grid {
             }
 
             if self.moving_tiles.len() == 0 {
-                self.spawn_random_tile();
+                match self.spawn_random_tile() {
+                    Ok(_) => (),
+                    Err(_) => (),
+                }
             }
 
             return;
         }
 
-        // loop through tiles
         if let None = mv {
             return;
         }
 
         self.moving_tiles = self.check(mv.unwrap());
-
-        // if *self != new_grid {
-        //     self.tiles = new_grid.tiles;
-        //     let _ = self.spawn_random_tile();
-        // }
     }
 }
 
@@ -371,7 +398,7 @@ mod tests {
     #[test]
     fn get_tile_position() {
         let tile_size = 10;
-        let grid = Grid::new(tile_size, C::new(0, 0), 4);
+        let grid = Grid::new(tile_size, 4);
         assert!(grid.get_coordinates_at(P::new(0, 0)) == C::new(MARGINX, MARGINY));
         assert!(
             grid.get_coordinates_at(P::new(1, 1))
@@ -402,40 +429,40 @@ mod tests {
 
     #[test]
     fn one_tile_move_right() {
-        let mut grid = Grid::new(10, C::new(0, 0), 4);
+        let mut grid = Grid::new(10, 4);
         grid.insert_tile(P::new(2, 0), 2);
         grid.insert_tile(P::new(0, 0), 2);
-        grid.on_tick(Some(Move::Left), &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
-        grid.on_tick(None, &mut false);
+        grid.on_tick(Some(Move::Left));
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
+        grid.on_tick(None);
         print_grid(&grid);
         // assert!(grid.get_tile(0, 0).unwrap().n == 4);
         // grid.insert_tile(3, 0, 4);

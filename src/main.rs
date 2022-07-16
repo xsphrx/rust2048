@@ -5,7 +5,7 @@ mod game;
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event as CEvent, KeyCode},
-    execute,
+    execute, terminal,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use std::cell::RefCell;
@@ -29,12 +29,105 @@ use tui::{
     Frame, Terminal,
 };
 
-use drawing::{draw_number, draw_shape, Direction};
+use drawing::{draw_number, draw_shape, get_bg_color_for_n, get_color_for_n, Direction};
 use game::{Coordinates, Grid, Move, Position, Tile};
+use std::fmt;
+use std::sync::{Arc, Mutex, RwLock};
+
+const BASE_TICK_RATE: u64 = 20;
 
 enum Event<I> {
     Input(I),
     Tick,
+}
+
+#[repr(u16)]
+#[derive(Clone, Copy, Debug)]
+pub enum SettingsItem {
+    GameSize = 1,
+    AnimationSpeed = 2,
+}
+
+impl fmt::Display for SettingsItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+impl From<u16> for SettingsItem {
+    fn from(n: u16) -> Self {
+        match n {
+            0 => SettingsItem::AnimationSpeed,
+            2 => SettingsItem::AnimationSpeed,
+            _ => SettingsItem::GameSize,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Settings {
+    game_size: u16,
+    animation_speed: u16,
+    active_item: SettingsItem,
+}
+
+impl Settings {
+    fn new() -> Self {
+        Self {
+            game_size: 1,
+            animation_speed: 3,
+            active_item: SettingsItem::GameSize,
+        }
+    }
+
+    fn update_settings(&mut self, item: SettingsItem) {
+        match item {
+            SettingsItem::GameSize => {
+                self.game_size = std::cmp::max((self.game_size + 1) % 4, 1);
+            }
+            SettingsItem::AnimationSpeed => {
+                self.animation_speed = std::cmp::max((self.animation_speed + 1) % 4, 1);
+            }
+        }
+    }
+
+    fn get_value(&self, item: SettingsItem) -> u16 {
+        match item {
+            SettingsItem::GameSize => self.game_size,
+            SettingsItem::AnimationSpeed => self.animation_speed,
+        }
+    }
+}
+
+#[repr(u16)]
+#[derive(Clone, Copy, Debug)]
+pub enum MenuItem {
+    Start = 1,
+    Settings = 2,
+    Exit = 3,
+}
+
+impl fmt::Display for MenuItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+impl From<u16> for MenuItem {
+    fn from(n: u16) -> Self {
+        match n {
+            0 => MenuItem::Exit,
+            2 => MenuItem::Settings,
+            3 => MenuItem::Exit,
+            _ => MenuItem::Start,
+        }
+    }
+}
+
+enum Screen {
+    Menu,
+    Game,
+    Settings,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -46,13 +139,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // create app and run it
-    let tick_rate = Duration::from_millis(10);
-    let mut game = Grid::new(10, Coordinates::new(0, 0), 4);
-    let pos = Position::new(1, 1);
-    game.insert_tile(pos, 2);
-    // game.insert_tile(2, 1, 2);
-
-    let res = run_game(&mut terminal, game, tick_rate);
+    let game = Grid::new(6, 6);
+    let res = run_game(&mut terminal, game);
 
     // restore terminal
     disable_raw_mode()?;
@@ -73,13 +161,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn run_game<B: Backend>(
     terminal: &mut Terminal<B>,
     mut game: Grid,
-    tick_rate: Duration,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let settings = Arc::new(RwLock::new(Settings::new()));
+    let settings_clone = settings.clone();
+    let mut active_screen = Screen::Menu;
+    let mut active_menu_item = MenuItem::Start;
+
     let (tx, rx) = channel();
-    let tick_rate = Duration::from_millis(50);
     thread::spawn(move || {
         let mut last_tick = Instant::now();
         loop {
+            let animation_speed = settings_clone.read().unwrap().animation_speed;
+            let tick_rate = Duration::from_millis((4 - animation_speed) as u64 * BASE_TICK_RATE);
             let timeout = tick_rate
                 .checked_sub(last_tick.elapsed())
                 .unwrap_or_else(|| Duration::from_secs(0));
@@ -99,43 +192,200 @@ fn run_game<B: Backend>(
     });
 
     loop {
-        terminal.draw(|f| render(&game, f))?;
-        let mut mv = None;
-        let mut animating = false;
+        terminal.draw(|f| match active_screen {
+            Screen::Menu => render_menu(f, active_menu_item),
+            Screen::Game => render_game(f, &mut game),
+            Screen::Settings => render_settings(f, settings.clone()),
+        })?;
 
         match rx.recv()? {
-            Event::Input(event) => match event.code {
-                KeyCode::Char('q') => {
+            Event::Input(event) => {
+                if event.code == KeyCode::Char('q') {
                     disable_raw_mode()?;
                     terminal.show_cursor()?;
                     break;
                 }
-                KeyCode::Char('a') => {
-                    mv = Some(Move::Left);
+                match active_screen {
+                    Screen::Menu => match event.code {
+                        KeyCode::Char('w') | KeyCode::Up => {
+                            let item = active_menu_item as u16 - 1;
+                            active_menu_item = MenuItem::from(item);
+                        }
+                        KeyCode::Char('s') | KeyCode::Down => {
+                            let item = active_menu_item as u16 + 1;
+                            active_menu_item = MenuItem::from(item);
+                        }
+                        KeyCode::Enter => match active_menu_item {
+                            MenuItem::Start => {
+                                active_screen = Screen::Game;
+                            }
+                            MenuItem::Settings => {
+                                active_screen = Screen::Settings;
+                            }
+                            MenuItem::Exit => {
+                                disable_raw_mode()?;
+                                terminal.show_cursor()?;
+                                break;
+                            }
+                        },
+                        KeyCode::Esc => {
+                            disable_raw_mode()?;
+                            terminal.show_cursor()?;
+                            break;
+                        }
+                        _ => (),
+                    },
+                    Screen::Game => {
+                        let mv = match event.code {
+                            KeyCode::Esc => {
+                                active_screen = Screen::Menu;
+                                continue;
+                            }
+                            KeyCode::Char('w') | KeyCode::Up => Some(Move::Up),
+                            KeyCode::Char('s') | KeyCode::Down => Some(Move::Down),
+                            KeyCode::Char('a') | KeyCode::Left => Some(Move::Left),
+                            KeyCode::Char('d') | KeyCode::Right => Some(Move::Right),
+                            _ => None,
+                        };
+                        game.on_tick(mv);
+                    }
+                    Screen::Settings => {
+                        let mut settings = settings.write().unwrap();
+                        match event.code {
+                            KeyCode::Char('w') | KeyCode::Up => {
+                                let item = settings.active_item as u16 - 1;
+                                settings.active_item = SettingsItem::from(item);
+                            }
+                            KeyCode::Char('s') | KeyCode::Down => {
+                                let item = settings.active_item as u16 + 1;
+                                settings.active_item = SettingsItem::from(item);
+                            }
+                            KeyCode::Enter => match settings.active_item {
+                                SettingsItem::AnimationSpeed => {
+                                    settings.update_settings(SettingsItem::AnimationSpeed)
+                                }
+                                _ => (),
+                            },
+                            KeyCode::Esc => {
+                                active_screen = Screen::Menu;
+                            }
+                            _ => (),
+                        }
+                    }
                 }
-                KeyCode::Char('d') => {
-                    mv = Some(Move::Right);
+            }
+            Event::Tick => match active_screen {
+                Screen::Game => {
+                    game.on_tick(None);
                 }
-                KeyCode::Char('s') => {
-                    mv = Some(Move::Down);
-                }
-                KeyCode::Char('w') => {
-                    mv = Some(Move::Up);
-                }
-                _ => {}
+                _ => (),
             },
-            Event::Tick => {}
         }
-        game.on_tick(mv, &mut animating);
     }
 
     Ok(())
 }
 
-pub fn render<B>(game: &Grid, f: &mut Frame<B>)
+pub fn render_menu<B>(f: &mut Frame<B>, active_item: MenuItem)
 where
     B: Backend,
 {
+    let text: std::vec::Vec<tui::text::Spans> = (1..=3)
+        .map(|n| {
+            let span;
+            if active_item as u16 == n {
+                span = Span::styled(
+                    MenuItem::from(n).to_string(),
+                    Style::default()
+                        .fg(Color::LightBlue)
+                        .add_modifier(Modifier::BOLD),
+                );
+            } else {
+                span = Span::raw(MenuItem::from(n).to_string())
+            }
+            Spans::from(vec![span])
+        })
+        .collect::<Vec<Spans>>();
+    let menu = Paragraph::new(text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default().fg(Color::White))
+            .title("Menu")
+            .border_type(BorderType::Plain),
+    );
+
+    f.render_widget(menu, f.size());
+}
+
+pub fn render_settings<B>(f: &mut Frame<B>, settings: Arc<RwLock<Settings>>)
+where
+    B: Backend,
+{
+    let settings = settings.read().unwrap();
+    let text: std::vec::Vec<tui::text::Spans> = (1..=2)
+        .map(|n| {
+            let span;
+            if settings.active_item as u16 == n {
+                span = Span::styled(
+                    SettingsItem::from(n).to_string()
+                        + &settings.get_value(SettingsItem::from(n)).to_string(),
+                    Style::default()
+                        .fg(Color::LightBlue)
+                        .add_modifier(Modifier::BOLD),
+                );
+            } else {
+                span = Span::raw(
+                    SettingsItem::from(n).to_string()
+                        + &settings.get_value(SettingsItem::from(n)).to_string(),
+                )
+            }
+            Spans::from(vec![span])
+        })
+        .collect::<Vec<Spans>>();
+    let menu = Paragraph::new(text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default().fg(Color::White))
+            .title("Settings")
+            .border_type(BorderType::Plain),
+    );
+
+    f.render_widget(menu, f.size());
+}
+
+pub fn render_game<B>(f: &mut Frame<B>, game: &mut Grid)
+where
+    B: Backend,
+{
+    let Rect {
+        width: terminal_width,
+        height: terminal_height,
+        ..
+    } = f.size();
+
+    // get tile size that fits the screen
+    let tile_sizes: [u16; 2] = [10, 6];
+    let mut final_size: u16 = 0;
+    for size in tile_sizes {
+        let (width, height) = game.simulate_size(size);
+        if width <= terminal_width && height <= terminal_height {
+            final_size = size;
+            break;
+        }
+    }
+
+    if final_size == 0 {
+        render_error(
+            f,
+            "The size of your terminal is too small and can't fit the game!",
+        );
+        return;
+    }
+
+    if game.tile_width != final_size {
+        game.change_tile_size(final_size);
+    }
+
     // render the grid
     let rect = Rect {
         x: game.coordinates.x,
@@ -177,7 +427,26 @@ where
                 draw_number(ctx, tile.n);
             });
         f.render_widget(canvas, rect);
-        let tile = Block::default().style(Style::default().bg(Color::DarkGray));
+        let tile = Block::default().style(Style::default().bg(get_bg_color_for_n(tile.n)));
         f.render_widget(tile, rect);
     }
+}
+
+pub fn render_error<B>(f: &mut Frame<B>, error: &str)
+where
+    B: Backend,
+{
+    let size = f.size();
+
+    let error_message = Paragraph::new(error)
+        .style(Style::default().fg(Color::LightCyan))
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::White))
+                .title("Error")
+                .border_type(BorderType::Plain),
+        );
+    f.render_widget(error_message, size);
 }
