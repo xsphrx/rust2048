@@ -130,6 +130,13 @@ impl Grid {
         }
     }
 
+    pub fn change_size(&mut self, new_size: u16) {
+        if new_size == self.size {
+            return;
+        }
+        self.size = new_size;
+    }
+
     pub fn width(&self) -> u16 {
         2 + self.tile_width * self.size + MARGINX * self.size
     }
@@ -141,6 +148,46 @@ impl Grid {
     pub fn simulate_size(&self, tile_size: u16) -> (u16, u16) {
         let width = 2 + tile_size * self.size + MARGINX * self.size;
         (width + self.coordinates.x, width / 2 + self.coordinates.y)
+    }
+
+    pub fn adjust_size(&mut self, terminal_width: u16, terminal_height: u16) -> Result<(), String> {
+        // get tile size that fits the screen
+        let tile_sizes: [u16; 2] = [10, 6];
+        let mut final_size: u16 = 0;
+        for size in tile_sizes {
+            let (width, height) = self.simulate_size(size);
+            if width <= terminal_width && height <= terminal_height {
+                final_size = size;
+                break;
+            }
+        }
+
+        if final_size == 0 {
+            return Err("The size of your terminal is too small and can't fit the game! Try to make it larger.".to_string());
+        }
+
+        if self.tile_width != final_size {
+            self.change_tile_size(final_size);
+        }
+
+        return Ok(());
+    }
+
+    pub fn check_if_game_can_continue(&mut self) -> Result<(), String> {
+        if self.tiles.iter().any(|(_, tile)| tile.n == 2048) {
+            return Err("Game Won".to_string());
+        }
+
+        if self.tiles.len() == (self.size * self.size) as usize {
+            if !vec![Move::Up, Move::Down, Move::Left, Move::Right]
+                .iter()
+                .any(|mv| self.check(*mv) != self.moving_tiles)
+            {
+                return Err("Game Lost".to_string());
+            }
+        }
+
+        return Ok(());
     }
 
     pub fn get_tile_mut(&mut self, pos: Position) -> Option<&mut Tile> {
@@ -179,12 +226,12 @@ impl Grid {
         let index = self
             .moving_tiles
             .iter()
-            .position(|((p, _))| p == &pos)
+            .position(|(p, _)| p == &pos)
             .unwrap();
         self.moving_tiles.remove(index);
     }
 
-    pub fn spawn_random_tile(&mut self) -> Result<(), String> {
+    pub fn spawn_random_tile(&mut self) {
         let mut available = vec![];
         for x in 0..self.size {
             for y in 0..self.size {
@@ -194,7 +241,7 @@ impl Grid {
             }
         }
         if available.len() < 1 {
-            return Err("No space left".to_string());
+            return;
         }
 
         if let Some((x, y)) = available.choose(&mut rand::thread_rng()) {
@@ -204,10 +251,7 @@ impl Grid {
                 _ => 4,
             };
             self.insert_tile(Position::new(*x, *y), new_n);
-            return Ok(());
         }
-
-        Err("Something went wrong".to_string())
     }
 
     pub fn flip(&mut self, flip: Flip) {
@@ -324,8 +368,9 @@ impl Grid {
         new_grid.moving_tiles
     }
 
-    pub fn on_tick(&mut self, mv: Option<Move>) {
+    pub fn on_tick(&mut self, mv: Option<Move>) -> Result<(), String> {
         if self.moving_tiles.len() > 0 {
+            // if tiles still moving, move them closer to the desired position
             for (pos, new_pos) in self.moving_tiles.clone().iter() {
                 let desired = self.get_coordinates_at(*new_pos);
                 let tile = self.get_tile(*pos).unwrap();
@@ -358,132 +403,21 @@ impl Grid {
             }
 
             if self.moving_tiles.len() == 0 {
-                match self.spawn_random_tile() {
-                    Ok(_) => (),
-                    Err(_) => (),
-                }
+                // if there is no more tiles moving it means that all
+                // the tiles achieved their desired position and we can
+                // spawn a new tile and check if game can continue
+                self.spawn_random_tile();
+                self.check_if_game_can_continue()?;
             }
 
-            return;
+            return Ok(());
         }
 
-        if let None = mv {
-            return;
+        match mv {
+            Some(mv) => self.moving_tiles = self.check(mv),
+            _ => (),
         }
 
-        self.moving_tiles = self.check(mv.unwrap());
+        return Ok(());
     }
-}
-
-pub fn print_grid(grid: &Grid) {
-    for (pos, tile) in grid.tiles.iter().sorted_by_key(|(pos, _)| pos.x) {
-        println!(
-            "({}, {}): {}  ({}, {})",
-            pos.x, pos.y, tile.n, tile.coordinates.x, tile.coordinates.y
-        );
-    }
-    println!();
-    for (pos, new_pos) in grid.moving_tiles.iter().sorted_by_key(|(pos, _)| pos.x) {
-        println!("({}, {}): ({}, {})", pos.x, pos.y, new_pos.x, new_pos.y);
-    }
-    println!();
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    type P = Position;
-    type C = Coordinates;
-
-    #[test]
-    fn get_tile_position() {
-        let tile_size = 10;
-        let grid = Grid::new(tile_size, 4);
-        assert!(grid.get_coordinates_at(P::new(0, 0)) == C::new(MARGINX, MARGINY));
-        assert!(
-            grid.get_coordinates_at(P::new(1, 1))
-                == C::new(2 * MARGINX + tile_size, 2 * MARGINY + tile_size / 2)
-        );
-        assert!(
-            grid.get_coordinates_at(P::new(0, 2))
-                == C::new(MARGINX, 3 * MARGINY + (tile_size / 2 * 2))
-        );
-    }
-
-    // #[test]
-    // fn getting_new_xy() {
-    //     let mut grid = Grid::new(10, C::new(0, 0), 4);
-    //     assert!(grid.get_desired_position(P::new(0, 1), 2) == (P::new(0, 1), 2));
-    //     assert!(grid.get_desired_position(P::new(1, 1), 2) == (P::new(0, 1), 2));
-    //     assert!(grid.get_desired_position(P::new(2, 0), 4) == (P::new(0, 0), 4));
-    //     grid.insert_tile(P::new(0, 1), 2);
-    //     dbg!(&grid);
-    //     assert!(grid.get_desired_position(P::new(1, 1), 2) == (P::new(0, 1), 4));
-    //     grid.insert_tile(P::new(0, 1), 4);
-    //     assert!(grid.get_desired_position(P::new(1, 1), 4) == (P::new(0, 1), 8));
-    //     assert!(grid.get_desired_position(P::new(1, 1), 2) == (P::new(1, 1), 2));
-    //     assert!(grid.get_desired_position(P::new(3, 1), 4) == (P::new(0, 1), 8));
-    //     grid.insert_tile(P::new(1, 1), 2);
-    //     assert!(grid.get_desired_position(P::new(3, 1), 2) == (P::new(1, 1), 4));
-    // }
-
-    #[test]
-    fn one_tile_move_right() {
-        let mut grid = Grid::new(10, 4);
-        grid.insert_tile(P::new(2, 0), 2);
-        grid.insert_tile(P::new(0, 0), 2);
-        grid.on_tick(Some(Move::Left));
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        grid.on_tick(None);
-        print_grid(&grid);
-        // assert!(grid.get_tile(0, 0).unwrap().n == 4);
-        // grid.insert_tile(3, 0, 4);
-        // grid.on_tick(Some(Move::Right), &mut false);
-        // dbg!(&grid);
-        //
-        assert!(false);
-    }
-
-    // #[test]
-    // fn two_tiles_move_left() {
-    //     let mut game = Game::new(10, 0, 0, 4);
-    //     let position = game.get_tile_position(1, 1);
-    //     game.grid.insert((1, 1), Tile::new(position, 2));
-    //     game.grid.insert((2, 1), Tile::new(position, 2));
-    //     game.on_tick(Some(Move::Left), &mut false);
-
-    //     let mut tmp_game = Game::new(10, 0, 0, 4);
-    //     let position = tmp_game.get_tile_position(0, 1);
-    //     tmp_game.grid.insert((0, 1), Tile::new(position, 4));
-    //     dbg!(&game);
-    //     assert!(game == tmp_game);
-    // }
 }
