@@ -8,7 +8,7 @@
 
 This project is based on:
 - [crossterm](https://github.com/crossterm-rs/crossterm)
-- [tui](https://github.com/fdehau/tui-rs)
+- [tui-rs](https://github.com/fdehau/tui-rs)
 
 ### Demo
 

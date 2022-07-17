@@ -30,6 +30,12 @@ use tui::{
 pub const MARGINX: u16 = 2;
 pub const MARGINY: u16 = 1;
 
+pub enum Flip {
+    Horizontal,
+    Clock,
+    CounterClock,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum Move {
     Up,
@@ -38,6 +44,8 @@ pub enum Move {
     Right,
 }
 
+/// Position on the Grid, the square a tile is currently in
+/// {x: 0, y: 0} would be top left square
 #[derive(Debug, Clone, Copy, PartialEq, Default, Eq, Hash)]
 pub struct Position {
     pub x: u16,
@@ -50,6 +58,8 @@ impl Position {
     }
 }
 
+/// Terminal coordinates, needed for Grid and Tiles to
+/// know where to render on the screen
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Coordinates {
     pub x: u16,
@@ -62,6 +72,8 @@ impl Coordinates {
     }
 }
 
+/// Tile is a single square on the grid with it's number - n
+/// it has the coordinates which are the coordinates in the terminal
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Tile {
     pub coordinates: Coordinates,
@@ -81,6 +93,9 @@ impl Tile {
     }
 }
 
+/// Grid represents the base for the 2048, it holds the tiles with
+/// their positions on the Grid. It also holds the tiles that are
+/// currently in motion and their desired positions
 #[derive(Debug, PartialEq)]
 pub struct Grid {
     pub tiles: HashMap<Position, Tile>,
@@ -89,12 +104,6 @@ pub struct Grid {
     pub tile_width: u16,
     pub tile_height: u16,
     pub coordinates: Coordinates,
-}
-
-pub enum Flip {
-    Horizontal,
-    Clock,
-    CounterClock,
 }
 
 impl Grid {
@@ -150,8 +159,8 @@ impl Grid {
         (width + self.coordinates.x, width / 2 + self.coordinates.y)
     }
 
+    /// try to adjust the size of the game to fit the terminal, if it's not possible return an error
     pub fn adjust_size(&mut self, terminal_width: u16, terminal_height: u16) -> Result<(), String> {
-        // get tile size that fits the screen
         let tile_sizes: [u16; 2] = [10, 6];
         let mut final_size: u16 = 0;
         for size in tile_sizes {
@@ -316,6 +325,13 @@ impl Grid {
         (Position::new(new_x, y), n)
     }
 
+    /// try to move the tiles in the direction specified by "mv", by first flipping
+    /// the board always to the same position, solving for this position and then
+    /// flipping it back to its original position
+    ///
+    /// For example if we want to move the tiles down we can instead rotate the board
+    /// clockwise then solve for tiles moving to the left and then rotate the board
+    /// back to it's original position (counterclockwise)
     pub fn check(&mut self, mv: Move) -> Vec<(Position, Position)> {
         let mut new_grid = Grid {
             tiles: HashMap::new(),
@@ -336,6 +352,9 @@ impl Grid {
             _ => (),
         };
 
+        // thanks to flipping the grid, now we can move all the tiles to the left and then
+        // flip the grid back to it's original position but this time with tiles moved to
+        // their desired position
         let mut unavailable = vec![];
         for (pos, tile) in self.tiles.iter().sorted_by_key(|(p, _)| p.x) {
             let (new_pos, n) =
@@ -370,7 +389,7 @@ impl Grid {
 
     pub fn on_tick(&mut self, mv: Option<Move>) -> Result<(), String> {
         if self.moving_tiles.len() > 0 {
-            // if tiles still moving, move them closer to the desired position
+            // if tiles are still moving, move them closer to the desired position
             for (pos, new_pos) in self.moving_tiles.clone().iter() {
                 let desired = self.get_coordinates_at(*new_pos);
                 let tile = self.get_tile(*pos).unwrap();

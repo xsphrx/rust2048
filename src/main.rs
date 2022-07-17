@@ -177,6 +177,9 @@ fn run_game<B: Backend>(
 
     let (tx, rx) = channel();
     thread::spawn(move || {
+        // spawn a thread that will be listening to the input of the user and
+        // send this input through mpsc to the rendering thread, if there is no
+        // input it will send the tick message
         let mut last_tick = Instant::now();
         loop {
             let animation_speed = settings_clone.read().unwrap().animation_speed;
@@ -201,7 +204,7 @@ fn run_game<B: Backend>(
 
     loop {
         terminal.draw(|f| {
-            // every screen should have a black background
+            // render black background by default
             f.render_widget(
                 Block::default().style(Style::default().bg(Color::Black)),
                 f.size(),
@@ -228,6 +231,8 @@ fn run_game<B: Backend>(
         })?;
 
         match rx.recv()? {
+            // listen to messages from the other thread and based on the
+            // message decide what to do
             Event::Input(event) => {
                 if event.code == KeyCode::Char('q') {
                     disable_raw_mode()?;
@@ -475,7 +480,8 @@ where
     };
 
     if rect.right() > f.size().right() || rect.bottom() > f.size().bottom() {
-        // to make sure the controls don't go outside the terminal
+        // to make sure the controls don't go outside of the terminal
+        // and cause errors they won't be rendered if they don't fit
         return;
     }
 
